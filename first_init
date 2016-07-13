@@ -1,0 +1,122 @@
+#!/bin/bash
+
+ADMIN_USER="ytlogin"
+DEFAULT_PASSWD='#!?czl^lz^#123'
+
+#check install mysql and jdk
+if [ -d /data/mysql/data ];then
+    echo "/data/mysql/data/ is exists,Please check!!!"
+    exit 1
+elif [ -d /usr/local/services/jdk* ];then
+    echo "/usr/local/services/jdk* is exists,Please check!!!"
+    exit 1
+fi
+
+#check disk data,must more than 90G
+num=0
+for i in `df -h |egrep "[0-9]G"| awk '{print $2}'| sed 's/G//g'`
+do
+    let num=$num+$i
+done
+[ $num -lt 90 ] && echo "Please check disk data,now less than 90G,exit!" && exit 1
+unset num
+
+#add ntp server
+sed -i '/windows/d' /var/spool/cron/root
+echo "*/2 * * * * /usr/sbin/ntpdate time.windows.com >/dev/null 2>&1" >>/var/spool/cron/root
+
+
+
+if grep -q 'SUSE Linux' /proc/version;then
+    public_key
+    zypper --non-interactive install libxml2-devel libjpeg-devel libpng-devel freetype2-devel
+else
+#stop firewall
+service iptables stop
+chkconfig iptables off
+
+rpm -e epel-release-6-8.noarch > /dev/null 2>&1
+
+#rm -f /etc/yum.repos.d/centos.repo  /etc/yum.repos.d/epel.repo*  /etc/yum.repos.d/epel-testing.repo* /etc/yum.repos.d/CentOS6-Base-163.repo
+rm -f  /etc/yum.repos.d/epel.repo*  /etc/yum.repos.d/epel-testing.repo* /etc/yum.repos.d/CentOS6-Base-163.repo
+
+
+cd /etc/yum.repos.d/
+#wget  http://203.195.136.156/CentOS-Base.repo
+wget  http://203.195.136.156/epel.repo
+wget  http://203.195.136.156/epel-testing.repo
+
+cd /etc/pki/rpm-gpg/
+wget http://203.195.136.156/RPM-GPG-KEY-EPEL-6
+
+#yum remove mysql* php* httpd* jdk -y
+
+yum install -y ntp vim-enhanced gcc gcc-c++ flex bison autoconf automake bzip2-devel libtiff-devel freetype-devel gettext-devel gd gd-devel pam-devel openssl openssl-devel fontconfig-devel freetype libxml2 libxml2-devel zlib zlib-devel glibc glibc-devel glib2 glib2-devel bzip2 bzip2-devel curl curl-devel e2fsprogs e2fsprogs-devel krb5-devel libidn libidn-devel openldap-devel openldap-clients openldap-servers libxslt-devel libevent-devel python python-devel pcre-devel ntp cmake expect lrzsz make apr* kernel kernel-headers keyutils keyutils-libs-devel patch perl compat* cpp libgomp libstdc++-devel libsepol-devel libselinux-devel libXpm* freetype* fontconfig libjpeg* libpng* gettext libtool* ncurses* wget sysstat screen perl-CPAN telnet dos2unix lrzsz elinks scons python-simplejson tcl-devel tcl w3m unzip sudo chkconfig  cronie svn net-snmp net-snmp-utils net-snmp-devel sshpass rsync tzdata
+
+#需要升级的软件
+
+yum update -y bash openssl glibc
+
+
+
+useradd ${ADMIN_USER}
+echo "${DEFAULT_PASSWD}" | passwd --stdin ${ADMIN_USER}
+echo 'YXQapwd327#@$^)' |passwd --stdin root
+
+useradd ansibleuser
+echo 'nWrjcUZzoyvP' |passwd --stdin ansibleuser
+
+echo "ansibleuser  ALL=(ALL) NOPASSWD:ALL"  >> /etc/sudoers
+
+echo "export LANG='en_US.utf-8'" >>/etc/bashrc
+
+source /etc/bashrc
+
+
+
+
+echo "=========================================================================================="
+echo "checkinfo"
+free -m
+
+echo "=========================================================================================="
+df -hT
+
+echo "=========================================================================================="
+cat /proc/cpuinfo |grep process
+
+echo "=========================================================================================="
+ls -lh /etc/sysconfig/network-scripts/ifcfg-eth*
+
+echo "=========================================================================================="
+rpm -q centos-release
+
+#line replace
+function change_config(){
+    key=$1
+    tovalue=$2
+if grep -Pq "^\s*${key}\s+" /etc/ssh/sshd_config;then
+    sed -i "/^[[:space:]]*${key}[[:space:]]\+/c${tovalue}" /etc/ssh/sshd_config
+
+elif grep -Pq "^\s*#\s*${key}\s+" /etc/ssh/sshd_config;then
+    sed -i "/^[[:space:]]*#[[:space:]]*${key}[[:space:]]\+/c${tovalue}" /etc/ssh/sshd_config
+else
+    echo  "${tovalue}" >> /etc/ssh/sshd_config
+fi
+}
+
+
+
+change_config Port 'Port 12784'
+change_config UseDNS 'UseDNS no'
+change_config PermitRootLogin 'PermitRootLogin yes'
+change_config GSSAPIAuthentication 'GSSAPIAuthentication no'
+
+service sshd restart
+
+[ -e /etc/selinux/config ] && sed -i '/SELINUX=/c SELINUX=disabled' /etc/selinux/config
+#glibc升级需要重启
+
+echo "reboot now........." && sleep 10 && init 6
+
+fi
